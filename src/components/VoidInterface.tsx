@@ -111,8 +111,7 @@ export default function VoidInterface({ setIsVoid }: { setIsVoid: (v: boolean) =
       {/* TOP RIGHT NAV */}
       <div style={{ position: "fixed", top: "40px", right: "4vw", display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-end", zIndex: 4000 }}>
          <button onClick={() => setIsVoid(false)} style={{ background: "none", border: "none", color: "#000", fontSize: "10px", fontWeight: "900", letterSpacing: "3px", cursor: "pointer", marginBottom: "30px" }}>BACK_TO_DASHBOARD</button>
-         <button onClick={() => setVoidMode("KACIM")} style={{ background: voidMode === "KACIM" ? "#000" : "none", color: voidMode === "KACIM" ? "#fff" : "#000", border: "1px solid #000", padding: "12px 25px", fontSize: "9px", fontWeight: "900", letterSpacing: "4px", cursor: "pointer", width: "180px" }}>RAG MODEL</button>
-         <button onClick={() => setVoidMode("MOLOCH")} style={{ background: voidMode === "MOLOCH" ? "#000" : "none", color: voidMode === "MOLOCH" ? "#fff" : "#000", border: "1px solid #000", padding: "12px 25px", fontSize: "9px", fontWeight: "900", letterSpacing: "4px", cursor: "pointer", width: "180px" }}>TRAINED MODEL</button>
+
          <button onClick={() => setVoidMode("VORTEX")} style={{ marginTop: "10px", background: "none", border: "none", color: "#aaa", fontSize: "8px", fontWeight: "900", cursor: "pointer", letterSpacing: "2px", opacity: voidMode === "VORTEX" ? 0 : 1 }}>SHOW_DISPLAY</button>
       </div>
 
@@ -131,27 +130,7 @@ export default function VoidInterface({ setIsVoid }: { setIsVoid: (v: boolean) =
       {voidMode === "VORTEX" && visualEngine === "ACOUSTIC_SAND" && <canvas ref={canvasRef} style={{ display: "block", filter: "contrast(1.2)" }} />}
       {voidMode === "VORTEX" && visualEngine === "MODULE_2" && <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "12px", letterSpacing: "10px" }}>// SECONDARY_MODULE_OFFLINE //</div>}
 
-      {/* KACIM INTERFACE */}
-      {voidMode === "KACIM" && (
-        <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 15vw" }}>
-          <div style={{ width: "100%", maxWidth: "700px", animation: "slideUp 0.6s ease" }}>
-            <h3 style={{ fontSize: "10px", letterSpacing: "12px", color: "#888", marginBottom: "50px", fontWeight: "900" }}>PROTOCOL // KACIM</h3>
-            <input value={vInput} onChange={e => setVInput(e.target.value)} placeholder="INJECT_QUERY..." style={{ width: "100%", background: "none", border: "none", borderBottom: "3px solid #000", color: "#000", fontSize: "32px", outline: "none", padding: "20px 0", fontWeight: "100" }} />
-            <button onClick={() => {alert("QUERY_SENT"); setVInput("");}} style={{ marginTop: "50px", background: "#000", color: "#fff", border: "none", padding: "18px 50px", fontSize: "10px", fontWeight: "900", cursor: "pointer", letterSpacing: "3px" }}>EXECUTE</button>
-          </div>
-        </div>
-      )}
-
-      {/* MOLOCH INTERFACE */}
-      {voidMode === "MOLOCH" && (
-        <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 15vw", background: "#fcfcfc" }}>
-          <div style={{ width: "100%", maxWidth: "700px", animation: "slideUp 0.6s ease" }}>
-            <h3 style={{ fontSize: "10px", letterSpacing: "12px", color: "#ff4444", marginBottom: "50px", fontWeight: "900" }}>SYSTEM // MOLOCH</h3>
-            <input value={vInput} onChange={e => setVInput(e.target.value)} placeholder="NEURAL_OVERRIDE..." style={{ width: "100%", background: "none", border: "none", borderBottom: "3px solid #ff4444", color: "#000", fontSize: "32px", outline: "none", padding: "20px 0", fontWeight: "100" }} />
-            <button onClick={() => {alert("SIGNAL_LOST"); setVInput("");}} style={{ marginTop: "50px", background: "#ff4444", color: "#fff", border: "none", padding: "18px 50px", fontSize: "10px", fontWeight: "900", cursor: "pointer", letterSpacing: "3px" }}>ACTIVATE</button>
-          </div>
-        </div>
-      )}
+     
       <style>{` @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } } `}</style>
     </main>
   );
