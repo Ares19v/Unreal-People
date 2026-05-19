@@ -10,3 +10,8 @@ High-performance orchestration hub for RTX 5060.
 ## 📂 Docs
 - [Architecture](./docs/ARCHITECTURE.md)
 - [API Reference](./docs/API_REFERENCE.md)
+
+---
+<p align="center">
+  Made by Devansh Tyagi @ 2026
+</p>
