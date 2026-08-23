@@ -1,4 +1,4 @@
-﻿"use client"; 
+"use client"; 
 import React, { useState, useEffect, useRef } from "react"; 
 import ChatInterface from "@/components/ChatInterface";
 import VoidInterface from "@/components/VoidInterface";
@@ -62,7 +62,8 @@ export default function Home() {
   const [localModelFile, setLocalModelFile] = useState<File | null>(null);
   const [loraFile, setLoraFile] = useState<File | null>(null);
 
-  const [mcpStatus, setMcpStatus] = useState("OFFLINE"); 
+  const [mcpStatus, setMcpStatus] = useState("CHECKING"); 
+  const [vectorDbData, setVectorDbData] = useState<{status: string, vectors: number | string, namespaces?: number} | null>(null);
   
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const videoWrapperRef = useRef<HTMLDivElement>(null);
@@ -88,6 +89,9 @@ export default function Home() {
     const hasVisited = sessionStorage.getItem("up_visited");
     if (!hasVisited) { setTimeout(() => { setHeaderLoaded(true); sessionStorage.setItem("up_visited", "true"); }, 100); } 
     else { setHeaderLoaded(true); }
+    // Fetch real peripheral status on mount
+    fetch("/api/status/pinecone").then(r => r.json()).then(d => setVectorDbData(d)).catch(() => setVectorDbData({ status: "OFFLINE", vectors: "N/A" }));
+    fetch("/api/status/mcp").then(r => r.json()).then(d => setMcpStatus(d.status === "ACTIVE" ? "ACTIVE" : "OFFLINE")).catch(() => setMcpStatus("OFFLINE"));
   }, []);
 
   useEffect(() => {
@@ -207,6 +211,13 @@ export default function Home() {
 
   const removeAgentFromTeam = (teamId: string, agentId: string) => {
     setCrewTeams(prev => prev.map(t => t.id === teamId ? { ...t, members: t.members.filter(m => m !== agentId) } : t));
+  };
+
+  const deleteTeam = (teamId: string) => {
+    if (window.confirm("CRITICAL: DELETE THIS TEAM?")) {
+      setCrewTeams(prev => prev.filter(t => t.id !== teamId));
+      if (executingTeamId === teamId) { setExecutingTeamId(null); setCrewResult(null); }
+    }
   };
 
   const triggerVoid = () => { setAnimating(true); setTimeout(() => { setIsVoid(true); setAnimating(false); }, 400); };
@@ -392,8 +403,8 @@ export default function Home() {
                       
                       <div style={{ marginTop: "1.5rem", padding: "20px", border: `1px dashed ${colors.line}`, display: "flex", flexDirection: "column", gap: "12px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: "10px", color: colors.sub, letterSpacing: "1px" }}>INDEX:</span> <span style={{ fontSize: "10px", fontWeight: "bold" }}>UNREAL_MEMORY</span></div>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: "10px", color: colors.sub, letterSpacing: "1px" }}>VECTORS:</span> <span style={{ fontSize: "10px", fontWeight: "bold" }}>14,203</span></div>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: "10px", color: colors.sub, letterSpacing: "1px" }}>STATUS:</span> <span style={{ fontSize: "10px", fontWeight: "bold" }}>READY</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: "10px", color: colors.sub, letterSpacing: "1px" }}>VECTORS:</span> <span style={{ fontSize: "10px", fontWeight: "bold" }}>{vectorDbData ? vectorDbData.vectors.toLocaleString() : "..."}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: "10px", color: colors.sub, letterSpacing: "1px" }}>STATUS:</span> <span style={{ fontSize: "10px", fontWeight: "bold", color: vectorDbData?.status === "CONNECTED" ? "#00ff88" : vectorDbData?.status === "OFFLINE" ? "#ff4444" : "inherit" }}>{vectorDbData?.status ?? "CHECKING"}</span></div>
                       </div>
 
                       <div style={{ marginTop: "2rem", display: "flex", alignItems: "center", gap: "1rem" }}>
@@ -450,12 +461,15 @@ export default function Home() {
                           <div key={team.id} style={{ border: `1px solid ${colors.line}`, padding: "20px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${colors.line}`, paddingBottom: "15px", marginBottom: "15px" }}>
                               <span style={{ fontSize: "12px", fontWeight: "bold", letterSpacing: "2px" }}>{team.name}</span>
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                              <button onClick={() => deleteTeam(team.id)} style={{ background: "transparent", border: "none", color: "#ff4444", fontSize: "9px", fontWeight: "900", letterSpacing: "2px", cursor: "pointer" }}>DELETE</button>
                               <select className="team-select" onChange={(e) => addAgentToTeam(team.id, e.target.value)} value="">
                                 <option value="" disabled>+ ASSIGN AGENT</option>
                                 {agents.filter(a => !team.members.includes(a.id)).map(a => (
                                   <option key={a.id} value={a.id} style={{background: colors.bg, color: colors.text}}>{a.name}</option>
                                 ))}
                               </select>
+                              </div>
                             </div>
                             
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>

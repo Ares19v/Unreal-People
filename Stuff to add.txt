@@ -1,13 +1,16 @@
+UNREAL PEOPLE 
+
 lora model/Parameter-Efficient Fine-Tuning (PEFT).
 
 mcp model
 
 LangGraph or CrewAI
 
-
 Chain of Thought (CoT): Forcing the model to "think out loud" before giving the final answer, which drastically reduces logic errors.
-
 
 Model Quantization
 
 Prompt Caching & Distillation
+
+
+
