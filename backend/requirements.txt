@@ -9,3 +9,5 @@ langchain-groq
 langchain-openai
 pdfplumber
 python-dotenv
+langchain-core>=0.3.0
+langgraph>=0.2.0
