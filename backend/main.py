@@ -1,7 +1,11 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import os
+import json
+import threading
+import queue
 import shutil
 from dotenv import load_dotenv
 
@@ -21,48 +25,34 @@ app.add_middleware(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "models", "gguf")
-LORA_DIR = os.path.join(BASE_DIR, "models", "lora")
-
-os.makedirs(MODELS_DIR, exist_ok=True)
-os.makedirs(LORA_DIR, exist_ok=True)
-
-# --- QUARANTINED LOCAL HARDWARE STATE ---
-ACTIVE_LOCAL_MODEL = None
-ACTIVE_LOCAL_MODEL_PATH = None
-ACTIVE_LORA_PATH = None
 
 
 # ============================================================
 # PYDANTIC MODELS
 # ============================================================
 
-class LoadLocalModelRequest(BaseModel):
-    model_filename: str
-    lora_filename: str = None
-    precision: str = "FULL"
-    quant_level: str = "Q4"
-
 class CrewApiExecutionRequest(BaseModel):
     team_name: str
     task: str
     agents: list
-    api_key: str
-    provider: str
-    api_model: str
+    api_key: str = ""
+    provider: str = "GROQ"
+    api_model: str = "qwen/qwen3.8-27b"
 
 class GraphExecutionRequest(BaseModel):
     team_name: str
     task: str
     agents: list
-    api_key: str
-    provider: str
-    api_model: str
+    api_key: str = ""
+    provider: str = "GROQ"
+    api_model: str = "qwen/qwen3.8-27b"
+    mode: str = "supervisor"  # "sequential" | "supervisor"
 
-class LocalChatRequest(BaseModel):
+class ChatApiRequest(BaseModel):
     messages: list
-    protocol: str
-    agent_name: str
+    agentId: str
+    protocol: str = "You are a helpful AI."
+    userId: str = None
 
 class MCPRequest(BaseModel):
     path: str
@@ -75,188 +65,127 @@ class MCPRequest(BaseModel):
 # ============================================================
 
 @app.get("/")
+@app.get("/health")
 def read_root():
     return {
         "status": "SYSTEM_ONLINE",
-        "hardware": "RTX_5060_READY",
+        "orchestrator": "LANGGRAPH_READY",
         "api": "CLOUD_READY",
-        "local_model": ACTIVE_LOCAL_MODEL_PATH or "NO_MODEL_LOADED",
-        "lora": ACTIVE_LORA_PATH or "NONE"
+        "mcp": "CONNECTED"
     }
 
 
-# ============================================================
-# PAGE 2 — LOCAL ENGINE SANDBOX (QUARANTINED)
-# ============================================================
 
-@app.post("/api/upload_model")
-async def upload_model(file: UploadFile = File(...), type: str = Form(...)):
-    """Upload a GGUF base model or LoRA adapter to disk."""
-    try:
-        target_dir = LORA_DIR if type == "LORA" else MODELS_DIR
-        file_path = os.path.join(target_dir, file.filename)
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        return {
-            "status": "SUCCESS",
-            "filename": file.filename,
-            "type": type,
-            "size_mb": round(file_size_mb, 2)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/list_models")
-def list_models():
-    """List all uploaded GGUF models and LoRA adapters."""
-    gguf_files = []
-    lora_files = []
-
-    if os.path.exists(MODELS_DIR):
-        for f in os.listdir(MODELS_DIR):
-            fpath = os.path.join(MODELS_DIR, f)
-            gguf_files.append({"name": f, "size_mb": round(os.path.getsize(fpath) / (1024 * 1024), 2)})
-
-    if os.path.exists(LORA_DIR):
-        for f in os.listdir(LORA_DIR):
-            fpath = os.path.join(LORA_DIR, f)
-            lora_files.append({"name": f, "size_mb": round(os.path.getsize(fpath) / (1024 * 1024), 2)})
-
-    return {
-        "models": gguf_files,
-        "lora_adapters": lora_files,
-        "active_model": ACTIVE_LOCAL_MODEL_PATH,
-        "active_lora": ACTIVE_LORA_PATH
-    }
-
-
-@app.post("/api/initialize_engine")
-async def initialize_engine(request: LoadLocalModelRequest):
+@app.post("/api/chat")
+async def chat_unified(request: ChatApiRequest):
     """
-    Loads the GGUF model + optional LoRA adapter into RTX 5060 VRAM.
-    LoRA/PEFT adapters are injected at load time via llama-cpp-python's native support.
+    Unified chat route:
+    Routes to high-speed Cloud LLM (Groq) with MCP & RAG memory context.
     """
-    global ACTIVE_LOCAL_MODEL, ACTIVE_LOCAL_MODEL_PATH, ACTIVE_LORA_PATH
+    last_msg = request.messages[-1]["content"] if request.messages else ""
 
-    model_path = os.path.join(MODELS_DIR, request.model_filename)
-    if not os.path.exists(model_path):
-        raise HTTPException(status_code=404, detail=f"Model file not found: {request.model_filename}")
+    # 1. MCP Context Detection
+    mcp_context = ""
+    try:
+        if os.path.exists(BASE_DIR):
+            mcp_context = (
+                f"\n\n--- MCP FILESYSTEM ACCESS (ACTIVE) ---\n"
+                f"You have secure read/write access to the local development environment. "
+                f"Base directory: {BASE_DIR}. "
+                f"You can reference local files and directories to provide grounded, context-aware answers."
+            )
+    except Exception:
+        pass
 
-    # Resolve LoRA path if provided
-    lora_path = None
-    if request.lora_filename and request.lora_filename not in ("NONE", "", None):
-        candidate = os.path.join(LORA_DIR, request.lora_filename)
-        if os.path.exists(candidate):
-            lora_path = candidate
-            print(f"// [PAGE_2] -> LORA ADAPTER FOUND: {request.lora_filename}")
-        else:
-            print(f"// [PAGE_2] -> WARNING: LoRA file not found: {request.lora_filename} — loading base model only.")
+    # 2. RAG Memory Context via Pinecone
+    rag_context = ""
+    pinecone_key = os.environ.get("PINECONE_API_KEY")
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if pinecone_key and openai_key and last_msg:
+        try:
+            import urllib.request
+            import json
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/embeddings",
+                data=json.dumps({
+                    "input": last_msg,
+                    "model": "text-embedding-3-small",
+                    "dimensions": 1024
+                }).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {openai_key}",
+                    "Content-Type": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                emb_data = json.loads(resp.read().decode("utf-8"))
+                vector = emb_data["data"][0]["embedding"]
+
+                from pinecone import Pinecone
+                pc = Pinecone(api_key=pinecone_key)
+                ns_name = f"user_{request.userId}" if request.userId else "user_default"
+                index = pc.index("unreal-memory").namespace(ns_name)
+                res = index.query(vector=vector, top_k=5, include_metadata=True, filter={"agentId": {"$eq": request.agentId}})
+                if res.matches:
+                    mem_lines = [f"[{m.metadata.get('role', 'USER').upper()}]: {m.metadata.get('content', '')}" for m in res.matches if m.score > 0.5]
+                    if mem_lines:
+                        rag_context = "\n\n--- MEMORY: PAST CONVERSATIONS ---\n" + "\n".join(mem_lines)
+        except Exception:
+            pass
+
+    # 3. System Prompt Synthesis (CoT)
+    system_prompt = (
+        f"You are an exclusive, specialized AI entity. You MUST strictly adhere to your assigned PROTOCOL. "
+        f"Do not break character. Do not introduce yourself as a generic AI.\n\n"
+        f"--- CORE PROTOCOL ---\n{request.protocol}\n\n"
+        f"--- REASONING INSTRUCTION (CoT) ---\n"
+        f"Before answering, internally reason through the question step by step. "
+        f"Consider multiple angles. Then deliver a precise, in-character response."
+    )
+    if rag_context:
+        system_prompt += rag_context
+    if mcp_context:
+        system_prompt += mcp_context
+
+    # 4. Cloud Groq Inference
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if not groq_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY missing in backend/.env")
 
     try:
-        from llama_cpp import Llama
-
-        # Evict previous model from VRAM
-        if ACTIVE_LOCAL_MODEL is not None:
-            print("// [PAGE_2] -> EVICTING PREVIOUS MODEL FROM VRAM")
-            del ACTIVE_LOCAL_MODEL
-            ACTIVE_LOCAL_MODEL = None
-            ACTIVE_LOCAL_MODEL_PATH = None
-            ACTIVE_LORA_PATH = None
-
-        print(f"\n// [PAGE_2_ISOLATION] -> LOADING INTO RTX 5060 VRAM: {request.model_filename}")
-        if lora_path:
-            print(f"// [PAGE_2_ISOLATION] -> INJECTING LORA ADAPTER (PEFT): {request.lora_filename}")
-
-        ACTIVE_LOCAL_MODEL = Llama(
-            model_path=model_path,
-            lora_path=lora_path,        # LoRA/PEFT injection — None = base model only
-            lora_scale=1.0,             # Full adapter strength (tune this if needed)
-            n_gpu_layers=-1,            # Offload all layers to RTX 5060
-            n_ctx=4096,
-            chat_format="chatml",
-            verbose=False
-        )
-
-        ACTIVE_LOCAL_MODEL_PATH = request.model_filename
-        ACTIVE_LORA_PATH = request.lora_filename if lora_path else None
-
-        print(f"// [PAGE_2_ISOLATION] -> ENGINE ONLINE: {request.model_filename}" +
-              (f" + {request.lora_filename}" if lora_path else ""))
-
-        return {
-            "status": "ENGINE_INITIALIZED",
-            "model": request.model_filename,
-            "lora": ACTIVE_LORA_PATH or "NONE",
-            "gpu_layers": -1,
-            "context_size": 4096
+        import urllib.request
+        import json
+        model_name = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "system", "content": system_prompt}] + request.messages,
+            "temperature": 0.7
         }
-
-    except Exception as e:
-        ACTIVE_LOCAL_MODEL = None
-        ACTIVE_LOCAL_MODEL_PATH = None
-        ACTIVE_LORA_PATH = None
-        raise HTTPException(status_code=500, detail=f"LOAD_FAILURE: {str(e)}")
-
-
-@app.post("/api/chat_local")
-async def chat_local(request: LocalChatRequest):
-    """Run inference on the locally loaded GGUF model (with optional LoRA)."""
-    global ACTIVE_LOCAL_MODEL
-
-    if ACTIVE_LOCAL_MODEL is None:
-        raise HTTPException(status_code=503, detail="NO_LOCAL_MODEL: Initialize engine first.")
-
-    try:
-        system_message = (
-            f"You are an exclusive, specialized AI entity. You MUST strictly adhere to your assigned PROTOCOL. "
-            f"Do not break character.\n\n"
-            f"--- CORE PROTOCOL ---\n{request.protocol}\n\n"
-            f"--- REASONING INSTRUCTION ---\n"
-            f"Before answering, internally reason through the question step by step. "
-            f"Then provide your final response, in character."
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "Unreal-People-Engine/1.0"
+            }
         )
-
-        llm_messages = [{"role": "system", "content": system_message}]
-        for msg in request.messages:
-            llm_messages.append({"role": msg["role"], "content": msg["content"]})
-
-        response = ACTIVE_LOCAL_MODEL.create_chat_completion(
-            messages=llm_messages,
-            temperature=0.7,
-            max_tokens=1024,
-            stop=["<|im_end|>", "</s>"]
-        )
-
-        reply = response["choices"][0]["message"]["content"]
-        return {
-            "reply": reply,
-            "source": "LOCAL_ENGINE",
-            "model": ACTIVE_LOCAL_MODEL_PATH,
-            "lora": ACTIVE_LORA_PATH or "NONE"
-        }
-
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            reply = data["choices"][0]["message"]["content"]
+            return {"reply": reply, "source": "GROQ", "model": model_name}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"INFERENCE_FAILURE: {str(e)}")
-
-
-@app.get("/api/engine_status")
-def engine_status():
-    return {
-        "loaded": ACTIVE_LOCAL_MODEL is not None,
-        "model": ACTIVE_LOCAL_MODEL_PATH or "NONE",
-        "lora": ACTIVE_LORA_PATH or "NONE"
-    }
+        raise HTTPException(status_code=500, detail=f"LLM_REQUEST_FAILED: {str(e)}")
 
 
 # ============================================================
-# PAGE 3 — CLOUD CrewAI ORCHESTRATION (SEQUENTIAL)
+# CREWAI ORCHESTRATION (SEQUENTIAL)
 # ============================================================
 
 @app.post("/api/execute_crew")
 async def execute_crew(request: CrewApiExecutionRequest):
-    if not request.api_key:
+    api_key = request.api_key or os.environ.get(f"{request.provider}_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not api_key:
         raise HTTPException(status_code=400, detail="NO_API_KEY")
     if not request.agents:
         raise HTTPException(status_code=400, detail="NO_AGENTS_ASSIGNED")
@@ -265,7 +194,7 @@ async def execute_crew(request: CrewApiExecutionRequest):
             team_name=request.team_name,
             task_description=request.task,
             agents_data=request.agents,
-            api_key=request.api_key,
+            api_key=api_key,
             provider=request.provider,
             api_model=request.api_model
         )
@@ -285,7 +214,8 @@ async def execute_graph(request: GraphExecutionRequest):
     LangGraph-powered agent workflow. Supports conditional branching and loops —
     unlike CrewAI's fixed sequential flow.
     """
-    if not request.api_key:
+    api_key = request.api_key or os.environ.get(f"{request.provider}_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not api_key:
         raise HTTPException(status_code=400, detail="NO_API_KEY")
     if not request.agents:
         raise HTTPException(status_code=400, detail="NO_AGENTS_ASSIGNED")
@@ -295,9 +225,10 @@ async def execute_graph(request: GraphExecutionRequest):
             team_name=request.team_name,
             task_description=request.task,
             agents_data=request.agents,
-            api_key=request.api_key,
+            api_key=api_key,
             provider=request.provider,
-            api_model=request.api_model
+            api_model=request.api_model,
+            mode=request.mode
         )
         return {"status": "SUCCESS", "result": final_result, "mode": "GRAPH"}
     except Exception as e:
@@ -306,8 +237,147 @@ async def execute_graph(request: GraphExecutionRequest):
 
 
 # ============================================================
-# STATUS ENDPOINTS — For Peripheral Panel
+# SSE STREAMING ENDPOINT — Real-time execution trace
 # ============================================================
+
+@app.post("/api/execute_stream")
+async def execute_stream(request: GraphExecutionRequest):
+    """
+    Streaming version of /api/execute_graph.
+    Returns Server-Sent Events (SSE) — each event is a JSON object describing
+    what is happening in real-time: supervisor_start, agent_start, tool_call,
+    tool_result, agent_complete, task_complete.
+
+    Frontend connects via EventSource or fetch with ReadableStream.
+    """
+    api_key = request.api_key or os.environ.get(f"{request.provider}_API_KEY") or os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="NO_API_KEY")
+    if not request.agents:
+        raise HTTPException(status_code=400, detail="NO_AGENTS_ASSIGNED")
+
+    # Thread-safe queue — graph pushes events here, SSE generator reads them
+    event_q = queue.Queue()
+
+    def run_graph_in_thread():
+        try:
+            from core.graph_engine import execute_graph_crew
+            execute_graph_crew(
+                team_name=request.team_name,
+                task_description=request.task,
+                agents_data=request.agents,
+                api_key=api_key,
+                provider=request.provider,
+                api_model=request.api_model,
+                mode=request.mode,
+                event_queue=event_q
+            )
+        except Exception as e:
+            error_payload = json.dumps({"type": "error", "message": str(e)})
+            event_q.put(error_payload)
+            event_q.put(None)  # sentinel
+
+    # Start graph execution in background thread
+    t = threading.Thread(target=run_graph_in_thread, daemon=True)
+    t.start()
+
+    def sse_generator():
+        while True:
+            try:
+                item = event_q.get(timeout=120)  # 2 min max wait per event
+            except queue.Empty:
+                yield "data: " + json.dumps({"type": "error", "message": "TIMEOUT"}) + "\n\n"
+                break
+
+            if item is None:
+                # Sentinel — execution complete
+                yield "data: " + json.dumps({"type": "stream_end"}) + "\n\n"
+                break
+
+            yield f"data: {item}\n\n"
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+# ============================================================
+# MCP REGISTRY — Exposes connected MCP servers and their tools
+# ============================================================
+
+@app.get("/api/mcp/registry")
+async def mcp_registry():
+    """
+    Returns the list of all known MCP servers, their connection status,
+    and the tools they expose. Used by the frontend MCP panel.
+    """
+    from core.tools import TOOL_REGISTRY
+
+    local_tools = [
+        {
+            "name": name,
+            "description": info["description"],
+            "args": info["args"]
+        }
+        for name, info in TOOL_REGISTRY.items()
+    ]
+
+    registry = [
+        {
+            "id": "local_filesystem",
+            "name": "LOCAL FILESYSTEM",
+            "status": "ACTIVE",
+            "description": "Read, write, and list files on the server filesystem.",
+            "tools": [t for t in local_tools if t["name"] in ("read_file", "write_file", "list_directory")]
+        },
+        {
+            "id": "web_search",
+            "name": "WEB SEARCH",
+            "status": "ACTIVE",
+            "description": "DuckDuckGo web search — no API key required.",
+            "tools": [t for t in local_tools if t["name"] == "web_search"]
+        },
+        {
+            "id": "python_runtime",
+            "name": "PYTHON RUNTIME",
+            "status": "ACTIVE",
+            "description": "Execute Python code in a sandboxed subprocess.",
+            "tools": [t for t in local_tools if t["name"] == "run_python"]
+        },
+        {
+            "id": "pinecone",
+            "name": "PINECONE MEMORY",
+            "status": "ACTIVE" if os.environ.get("PINECONE_API_KEY") else "OFFLINE",
+            "description": "Vector database — agent long-term memory and RAG context.",
+            "tools": [
+                {"name": "query_memory", "description": "Query relevant past memories", "args": {"query": "string", "top_k": "int"}},
+                {"name": "store_memory", "description": "Store agent output to memory", "args": {"content": "string", "agent_id": "string"}}
+            ]
+        },
+        {
+            "id": "groq_cloud",
+            "name": "GROQ CLOUD",
+            "status": "ACTIVE" if os.environ.get("GROQ_API_KEY") else "OFFLINE",
+            "description": "Fast cloud LLM inference via Groq API.",
+            "tools": [
+                {"name": "cloud_inference", "description": "Route to Groq LLM", "args": {"model": "string", "messages": "array"}}
+            ]
+        }
+    ]
+
+    return {
+        "status": "OK",
+        "mcp_count": len(registry),
+        "active_count": sum(1 for r in registry if r["status"] == "ACTIVE"),
+        "registry": registry
+    }
+
+
 
 @app.get("/api/status/pinecone")
 async def status_pinecone(api_key: str = None):
@@ -447,4 +517,5 @@ async def parse_pdf(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

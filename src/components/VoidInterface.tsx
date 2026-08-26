@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect, useRef } from "react";
 
 export default function VoidInterface({ setIsVoid }: { setIsVoid: (v: boolean) => void }) {
@@ -29,14 +29,14 @@ export default function VoidInterface({ setIsVoid }: { setIsVoid: (v: boolean) =
     window.addEventListener("mousemove", handleMouseMove);
     resize();
 
-    // Initialize Nanites with Base (x,y) and Offset (ox,oy)
-    for (let i = 0; i < 7000; i++) {
+    // Initialize Nanites with Base (x,y) and Offset (ox,oy) - 1800 particles for high-fidelity 60fps
+    for (let i = 0; i < 1800; i++) {
       nanites.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         vx: 0, vy: 0,
         ox: 0, oy: 0, // Elastic visual offset for cursor repulsion
-        size: Math.random() * 1.2 + 0.5
+        size: Math.random() * 1.5 + 0.8
       });
     }
 

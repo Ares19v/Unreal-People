@@ -1,19 +1,25 @@
-"use client"; 
 import React, { useState, useEffect, useRef } from "react"; 
 import ChatInterface from "@/components/ChatInterface";
 import VoidInterface from "@/components/VoidInterface";
 import AgentList from "@/components/AgentList";
 import { EditModal, AuthModal } from "@/components/Modals";
+import ExecutionTrace from "@/components/ExecutionTrace";
+import MCPPanel from "@/components/MCPPanel";
+import GraphVisualizer from "@/components/GraphVisualizer";
 
 const GlobalCursor = ({ darkMode }: { darkMode: boolean }) => {
-  const [pos, setPos] = useState({ x: -100, y: -100 });
+  const cursorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const handleMove = (e: MouseEvent) => setPos({ x: e.clientX, y: e.clientY });
-    window.addEventListener("mousemove", handleMove);
+    const handleMove = (e: MouseEvent) => {
+      if (cursorRef.current) {
+        cursorRef.current.style.transform = `translate3d(${e.clientX - 12}px, ${e.clientY - 12}px, 0)`;
+      }
+    };
+    window.addEventListener("mousemove", handleMove, { passive: true });
     return () => window.removeEventListener("mousemove", handleMove);
   }, []);
   return (
-    <div style={{ position: "fixed", left: pos.x, top: pos.y, width: "24px", height: "24px", pointerEvents: "none", zIndex: 9999, transform: "translate(-50%, -50%)", transition: "transform 0.05s linear" }}>
+    <div ref={cursorRef} style={{ position: "fixed", left: 0, top: 0, width: "24px", height: "24px", pointerEvents: "none", zIndex: 9999, willChange: "transform", transform: "translate3d(-100px, -100px, 0)" }}>
       <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill={darkMode ? "#fff" : "#000"} />
       </svg>
@@ -21,10 +27,10 @@ const GlobalCursor = ({ darkMode }: { darkMode: boolean }) => {
   );
 };
 
-export default function Home() {
-  const [activeAgent, setActiveAgent] = useState(null);
+export default function App() {
+  const [activeAgent, setActiveAgent] = useState<any>(null);
   const [darkMode, setDarkMode] = useState(false);
-  const [editingAgent, setEditingAgent] = useState(null);
+  const [editingAgent, setEditingAgent] = useState<any>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [isVoid, setIsVoid] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -48,27 +54,25 @@ export default function Home() {
   // --- CLOUD API CONFIG (Resides inside CrewAI Hub) ---
   const [apiProvider, setApiProvider] = useState("GROQ");
   const [apiKey, setApiKey] = useState(""); 
-  const [apiModelStr, setApiModelStr] = useState("llama3-70b-8192");
+  const [apiModelStr, setApiModelStr] = useState("qwen/qwen3.8-27b");
+  const [execMode, setExecMode] = useState<"supervisor" | "sequential">("supervisor");
 
   // --- CREW EXECUTION STATES ---
   const [executingTeamId, setExecutingTeamId] = useState<string | null>(null);
   const [crewTaskInput, setCrewTaskInput] = useState("");
   const [isCrewProcessing, setIsCrewProcessing] = useState(false);
   const [crewResult, setCrewResult] = useState<string | null>(null);
+  const [crewError, setCrewError] = useState<string | null>(null);
 
-  // --- QUARANTINED PAGE 2 STATES ---
-  const [localModelType, setLocalModelType] = useState("FULL"); 
-  const [quantLevel, setQuantLevel] = useState("Q4"); 
-  const [localModelFile, setLocalModelFile] = useState<File | null>(null);
-  const [loraFile, setLoraFile] = useState<File | null>(null);
+  // --- EXECUTION TRACE STATE ---
+  const [traceEvents, setTraceEvents] = useState<Array<{id: string; type: string; timestamp: number; data: Record<string, any>}>>([]);
+  const [recentToolCalls, setRecentToolCalls] = useState<Array<{tool: string; agent: string; ts: number}>>([]);
 
   const [mcpStatus, setMcpStatus] = useState("CHECKING"); 
   const [vectorDbData, setVectorDbData] = useState<{status: string, vectors: number | string, namespaces?: number} | null>(null);
   
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const videoWrapperRef = useRef<HTMLDivElement>(null);
-  const modelInputRef = useRef<HTMLInputElement>(null);
-  const loraInputRef = useRef<HTMLInputElement>(null);
 
   const [videoIndex, setVideoIndex] = useState(0);
   const [lightPlaylist, setLightPlaylist] = useState(["/moon1.mp4", "/moon2.mp4", "/moon3.mp4", "/moon4.mp4", "/moon5.mp4"]);
@@ -130,51 +134,95 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [agents, isVoid, activeAgent]); 
 
-  // --- QUARANTINED LOCAL HANDSHAKE ---
-  const handleLocalEngineInit = async () => {
-    if (!localModelFile) return alert("// CRITICAL_ERROR: NO_MODEL_FILE_DETECTED.");
-    try {
-      const formData = new FormData();
-      formData.append("file", localModelFile);
-      formData.append("type", "MODEL");
-      await fetch("http://localhost:8000/api/upload_model", { method: "POST", body: formData });
-      const response = await fetch("http://localhost:8000/api/initialize_engine", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_filename: localModelFile.name, lora_filename: loraFile ? loraFile.name : "NONE", precision: localModelType, quant_level: quantLevel }),
-      });
-      const data = await response.json();
-      if (data.status === "ENGINE_INITIALIZED") alert(`// LOCAL_ENGINE_ONLINE: ${data.model} LOCKED TO VRAM`);
-      else alert(`// SERVER_FAULT: ${data.detail}`);
-    } catch (error) { alert("// CORE_SYSTEM_OFFLINE: Cannot reach backend."); }
-  };
-
-  // --- PURE CLOUD API EXECUTION ---
+  // --- STREAMING EXECUTION via SSE ---
   const executeCrewProtocol = async () => {
     if (!crewTaskInput || !executingTeamId) return;
     if (!apiKey) return alert("// PROTOCOL_ABORT: API KEY REQUIRED FOR CLOUD EXECUTION.");
 
     setIsCrewProcessing(true);
     setCrewResult(null);
+    setCrewError(null);
+    setTraceEvents([]);
+
     const team = crewTeams.find(t => t.id === executingTeamId);
     const teamAgents = team?.members.map(mid => agents.find(a => a.id === mid)).filter(Boolean);
 
+    const addEvent = (type: string, data: Record<string, any>) => {
+      setTraceEvents(prev => [
+        ...prev,
+        { id: `${type}-${Date.now()}-${Math.random()}`, type, timestamp: Date.now(), data }
+      ]);
+    };
+
     try {
-      const response = await fetch("http://localhost:8000/api/execute_crew", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          team_name: team?.name, 
-          task: crewTaskInput, 
+      const response = await fetch("/api/execute_stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          team_name: team?.name,
+          task: crewTaskInput,
           agents: teamAgents,
           api_key: apiKey,
           provider: apiProvider,
-          api_model: apiModelStr
+          api_model: apiModelStr,
+          mode: execMode
         })
       });
-      const data = await response.json();
-      if(response.ok) setCrewResult(data.result);
-      else setCrewResult(`// CRITICAL_FAILURE: ${data.detail}`);
-    } catch(err) { setCrewResult("// OFFLINE: FAILED TO ESTABLISH CONNECTION WITH CLOUD ENGINE."); } 
-    finally { setIsCrewProcessing(false); }
+
+      if (!response.ok || !response.body) {
+        setCrewError("// FAILED TO CONNECT TO EXECUTION STREAM.");
+        setIsCrewProcessing(false);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            const evType = event.type;
+
+            // Track tool calls for MCP panel
+            if (evType === "tool_call") {
+              setRecentToolCalls(prev => [
+                { tool: event.tool, agent: event.agent ?? "agent", ts: Date.now() },
+                ...prev.slice(0, 19)
+              ]);
+            }
+
+            // Capture final output
+            if (evType === "task_complete") {
+              setCrewResult(event.final_output ?? null);
+            }
+
+            if (evType === "error") {
+              setCrewError(event.message ?? "Unknown error");
+            }
+
+            if (evType === "stream_end") {
+              setIsCrewProcessing(false);
+              break;
+            }
+
+            addEvent(evType, event);
+          } catch { /* skip malformed lines */ }
+        }
+      }
+    } catch (err) {
+      setCrewError("// OFFLINE: FAILED TO ESTABLISH CONNECTION WITH CLOUD ENGINE.");
+    } finally {
+      setIsCrewProcessing(false);
+    }
   };
 
   // --- CRUD ---
@@ -187,7 +235,7 @@ export default function Home() {
 
   const updateAgentDetail = (id: string, key: string, value: string) => {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, [key]: value } : a));
-    if (editingAgent?.id === id) setEditingAgent(prev => ({ ...prev, [key]: value }) as any);
+    if (editingAgent?.id === id) setEditingAgent((prev: any) => ({ ...prev, [key]: value }));
   };
 
   const deleteAgent = (id: string) => {
@@ -228,11 +276,7 @@ export default function Home() {
 
   return (
     <>
-      <style global jsx>{` * { cursor: none !important; } `}</style>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Audiowide&display=swap');
-        .glitch-out { animation: glitch 0.4s forwards; } 
-        @keyframes glitch { 0% { filter: brightness(1) blur(0px); } 100% { filter: brightness(15) blur(20px); } }
         .page-header { transition: opacity 4s cubic-bezier(0.25, 1, 0.5, 1); }
         .model-btn-card { border: 1px solid ${colors.line}; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
         .model-btn-card:hover { border-color: ${colors.text} !important; transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
@@ -249,8 +293,6 @@ export default function Home() {
         .void-trigger-title { transition: transform 0.3s ease; display: inline-block; cursor: pointer; }
         .void-trigger-title:hover { transform: scale(1.02); }
         .exec-console { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: ${colors.bg}; z-index: 999; display: flex; flex-direction: column; padding: 4rem; color: ${colors.text}; font-family: monospace; }
-        .pulse { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
       `}</style>
       <GlobalCursor darkMode={darkMode} />
       
@@ -273,40 +315,106 @@ export default function Home() {
           {/* THE EXECUTION CONSOLE OVERLAY */}
           {executingTeamId && (
             <div className="exec-console">
-              <div style={{ display: "flex", justifyContent: "space-between", borderBottom: `1px solid ${colors.line}`, paddingBottom: "20px", marginBottom: "40px" }}>
-                <span style={{ fontSize: "12px", letterSpacing: "4px", fontWeight: "bold" }}>// CLOUD_ORCHESTRATION_CONSOLE</span>
-                <button onClick={() => { setExecutingTeamId(null); setCrewResult(null); setCrewTaskInput(""); }} style={{ background: "transparent", color: colors.text, border: "none", cursor: "pointer", fontSize: "12px", letterSpacing: "2px" }}>[ ABORT_OPERATION ]</button>
+              {/* Top bar */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${colors.line}`, paddingBottom: "20px", marginBottom: "32px", flexShrink: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "12px", letterSpacing: "4px", fontWeight: 900, fontFamily: "Space Mono, monospace" }}>
+                    // ORCHESTRATION_CONSOLE
+                  </span>
+                  <span style={{ fontSize: "9px", letterSpacing: "2px", color: colors.sub, fontFamily: "Space Mono, monospace" }}>
+                    TEAM: {crewTeams.find(t => t.id === executingTeamId)?.name} · MODE: {execMode.toUpperCase()}
+                  </span>
+                </div>
+                <button
+                  onClick={() => { setExecutingTeamId(null); setCrewResult(null); setCrewTaskInput(""); setTraceEvents([]); setCrewError(null); setIsCrewProcessing(false); }}
+                  style={{ background: "transparent", color: colors.text, border: `1px solid ${colors.line}`, cursor: "pointer", fontSize: "10px", letterSpacing: "3px", fontFamily: "Space Mono, monospace", padding: "8px 16px" }}
+                >
+                  ABORT
+                </button>
               </div>
 
-              {!isCrewProcessing && !crewResult ? (
-                <div style={{ maxWidth: "800px", marginLeft: "auto", marginRight: "auto", width: "100%", paddingTop: "4rem" }}>
-                  <h2 style={{ fontSize: "36px", fontWeight: "300", letterSpacing: "-1px", marginBottom: "20px" }}>Define Protocol</h2>
-                  <p style={{ color: colors.sub, marginBottom: "40px", lineHeight: "1.6", fontSize: "14px" }}>
-                    Enter the primary objective for <strong style={{color: colors.text}}>{crewTeams.find(t=>t.id===executingTeamId)?.name}</strong>. The agents will sequence operations autonomously via the {apiProvider} API.
-                  </p>
-                  <textarea 
-                    value={crewTaskInput}
-                    onChange={(e) => setCrewTaskInput(e.target.value)}
-                    placeholder="e.g., Draft a comprehensive launch strategy..."
-                    style={{ width: "100%", height: "200px", background: "transparent", border: `1px solid ${colors.line}`, color: colors.text, padding: "24px", fontFamily: "inherit", outline: "none", marginBottom: "40px", resize: "none", fontSize: "14px", lineHeight: "1.8" }}
+              {/* Main content area — scrollable */}
+              <div style={{ flexGrow: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "2rem", maxWidth: "1000px", width: "100%", marginLeft: "auto", marginRight: "auto" }}>
+
+                {/* Task input — only show when not yet running */}
+                {!isCrewProcessing && traceEvents.length === 0 && !crewResult && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+                    <div>
+                      <h2 style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.5px", marginBottom: "12px" }}>
+                        Define Objective
+                      </h2>
+                      <p style={{ color: colors.sub, fontSize: "13px", lineHeight: "1.7" }}>
+                        Assign a task to <strong style={{ color: colors.text }}>{crewTeams.find(t => t.id === executingTeamId)?.name}</strong>.
+                        {execMode === "supervisor"
+                          ? " The supervisor will decompose it and assign each agent their specific subtask."
+                          : " Agents will process it sequentially, each refining the previous output."}
+                      </p>
+                    </div>
+
+                    {/* Mode selector */}
+                    <div style={{ display: "flex", gap: "1rem" }}>
+                      {(["supervisor", "sequential"] as const).map(m => (
+                        <button
+                          key={m}
+                          onClick={() => setExecMode(m)}
+                          style={{
+                            padding: "10px 24px",
+                            fontSize: "10px",
+                            fontWeight: 900,
+                            letterSpacing: "3px",
+                            fontFamily: "Space Mono, monospace",
+                            border: `1px solid ${execMode === m ? colors.text : colors.line}`,
+                            background: execMode === m ? colors.text : "transparent",
+                            color: execMode === m ? colors.bg : colors.sub,
+                            cursor: "pointer",
+                            transition: "all 0.2s ease"
+                          }}
+                        >
+                          {m.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+
+                    <textarea
+                      value={crewTaskInput}
+                      onChange={(e) => setCrewTaskInput(e.target.value)}
+                      placeholder="e.g., Build a Python REST API with JWT auth and unit tests..."
+                      style={{ width: "100%", height: "160px", background: "transparent", border: `1px solid ${colors.line}`, color: colors.text, padding: "20px", fontFamily: "Space Mono, monospace", outline: "none", resize: "none", fontSize: "13px", lineHeight: "1.8" }}
+                    />
+
+                    <button
+                      onClick={executeCrewProtocol}
+                      style={{ padding: "18px 40px", background: colors.text, color: colors.bg, border: "none", fontWeight: 900, letterSpacing: "4px", cursor: "pointer", fontSize: "11px", fontFamily: "Space Mono, monospace", width: "100%" }}
+                    >
+                      DEPLOY_TEAM →
+                    </button>
+                  </div>
+                )}
+
+                {/* Live execution trace */}
+                {(isCrewProcessing || traceEvents.length > 0 || crewResult || crewError) && (
+                  <ExecutionTrace
+                    isRunning={isCrewProcessing}
+                    events={traceEvents}
+                    finalOutput={crewResult}
+                    error={crewError}
+                    colors={colors}
                   />
-                  <button onClick={executeCrewProtocol} style={{ padding: "20px 40px", background: colors.text, color: colors.bg, border: "none", fontWeight: "bold", letterSpacing: "3px", cursor: "pointer", fontSize: "12px", width: "100%" }}>ENGAGE_CLOUD_UPLINK</button>
-                </div>
-              ) : isCrewProcessing ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "24px", marginTop: "4rem", maxWidth: "800px", marginLeft: "auto", marginRight: "auto", width: "100%" }}>
-                  <span className="pulse" style={{ fontSize: "28px", fontWeight: "bold", letterSpacing: "4px" }}>&gt; SYNTHESIZING_WORKFLOW...</span>
-                  <span style={{ color: colors.sub, letterSpacing: "2px" }}>&gt; Authenticating API Credentials...</span>
-                  <span style={{ color: colors.sub, letterSpacing: "2px" }}>&gt; Injecting Personalities into Context Window...</span>
-                  <span style={{ color: colors.sub, letterSpacing: "2px" }}>&gt; Executing Remote Neural Inference...</span>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", height: "100%", maxWidth: "1200px", marginLeft: "auto", marginRight: "auto", width: "100%" }}>
-                  <span style={{ fontSize: "16px", fontWeight: "bold", letterSpacing: "4px", color: colors.text, marginBottom: "30px", borderBottom: `1px solid ${colors.line}`, paddingBottom: "20px" }}>&gt; PROTOCOL_COMPLETE</span>
-                  <div style={{ flexGrow: 1, overflowY: "auto", border: `1px dashed ${colors.line}`, padding: "40px", whiteSpace: "pre-wrap", lineHeight: "1.8", fontSize: "14px", background: colors.highlight }}>{crewResult}</div>
-                </div>
-              )}
+                )}
+
+                {/* Re-run button */}
+                {!isCrewProcessing && (crewResult || crewError) && (
+                  <button
+                    onClick={() => { setTraceEvents([]); setCrewResult(null); setCrewError(null); }}
+                    style={{ padding: "14px 32px", background: "transparent", color: colors.sub, border: `1px solid ${colors.line}`, fontWeight: 900, letterSpacing: "3px", cursor: "pointer", fontSize: "10px", fontFamily: "Space Mono, monospace", alignSelf: "flex-start" }}
+                  >
+                    ← NEW_TASK
+                  </button>
+                )}
+              </div>
             </div>
           )}
+
 
           <div className={animating ? "glitch-out" : ""} style={{ width: "100%" }}>
             
@@ -324,65 +432,16 @@ export default function Home() {
               </div>
             </header>
             
-            {/* PAGE 2: ISOLATED LOCAL ENGINE */}
-            <section style={{ padding: "10rem 4vw", minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", borderTop: `1px solid ${colors.line}` }}>
+            {/* PAGE 2: INTERACTIVE AGENT GRAPH VISUALIZER */}
+            <section style={{ padding: "8rem 4vw", minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", borderTop: `1px solid ${colors.line}` }}>
               <div style={{ width: "100%", maxWidth: "1200px" }}> 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "2rem", borderBottom: `1px solid ${colors.line}`, marginBottom: "5rem" }}>
-                  <h3 style={{ fontSize: "12px", letterSpacing: "4px", fontWeight: "900", color: colors.sub }}>// ENGINE_01_LOCAL_CORE</h3>
-                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: colors.text }} />
-                </div>
-
-                <div style={{ width: "100%" }}>
-                  <div>
-                    <span style={{ fontSize: "10px", fontWeight: "800", color: colors.sub, letterSpacing: "3px" }}>CUSTOM_WEIGHTS</span>
-                    <h2 style={{ fontSize: "clamp(36px, 5vw, 64px)", fontWeight: "300", letterSpacing: "-2px", marginTop: "1rem" }}>Local Model Engine</h2>
-                  </div>
-                  <p style={{ fontSize: "16px", color: colors.sub, lineHeight: "1.8", maxWidth: "800px", marginTop: "2rem", marginBottom: "4rem" }}>
-                    Quarantine Sandbox: Upload your trained local neural network and inject fine-tuned LoRA adapters. This environment is isolated from Cloud routing protocols.
-                  </p>
-                  
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "4rem", marginTop: "1rem" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "3rem" }}>
-                      <div>
-                         <label style={{ fontSize: "10px", letterSpacing: "2px", color: colors.sub, display:"block", marginBottom:"12px" }}>BASE_MODEL_WEIGHTS</label>
-                         <input type="file" accept=".gguf,.safetensors,.bin" ref={modelInputRef} style={{ display: "none" }} onChange={(e) => { if(e.target.files?.length) setLocalModelFile(e.target.files[0]) }} />
-                         <div className="upload-area" onClick={() => modelInputRef.current?.click()} style={{ padding: "24px", textAlign: "center", cursor: "pointer", fontSize: "11px", letterSpacing: "2px", fontWeight: "bold" }}>
-                           {localModelFile ? `[ LOADED: ${localModelFile.name} ]` : "+ UPLOAD .GGUF / .SAFETENSORS"}
-                         </div>
-                      </div>
-                      <div>
-                         <label style={{ fontSize: "10px", letterSpacing: "2px", color: colors.sub, display:"block", marginBottom:"12px" }}>FINE_TUNED_ADAPTER (LORA)</label>
-                         <input type="file" accept=".safetensors,.bin" ref={loraInputRef} style={{ display: "none" }} onChange={(e) => { if(e.target.files?.length) setLoraFile(e.target.files[0]) }} />
-                         <div className="upload-area" onClick={() => loraInputRef.current?.click()} style={{ padding: "24px", textAlign: "center", cursor: "pointer", fontSize: "11px", letterSpacing: "2px", fontWeight: "bold" }}>
-                           {loraFile ? `[ INJECTED: ${loraFile.name} ]` : "+ ADD LORA ADAPTER"}
-                         </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: "3rem" }}>
-                      <div>
-                        <label style={{ fontSize: "10px", letterSpacing: "2px", color: colors.sub, display:"block", marginBottom:"12px" }}>PRECISION_COMPRESSION</label>
-                        <div style={{ display: "flex", gap: "10px" }}>
-                           <button onClick={()=>setLocalModelType("FULL")} style={{ flex: 1, padding: "16px", fontSize: "11px", letterSpacing: "2px", fontWeight: "bold", background: localModelType === "FULL" ? colors.text : "transparent", color: localModelType === "FULL" ? colors.bg : colors.text, border: `1px solid ${localModelType === "FULL" ? colors.text : colors.line}`, cursor: "pointer", transition: "all 0.3s" }}>FULL_WEIGHTS</button>
-                           <button onClick={()=>setLocalModelType("QUANTIZED")} style={{ flex: 1, padding: "16px", fontSize: "11px", letterSpacing: "2px", fontWeight: "bold", background: localModelType === "QUANTIZED" ? colors.text : "transparent", color: localModelType === "QUANTIZED" ? colors.bg : colors.text, border: `1px solid ${localModelType === "QUANTIZED" ? colors.text : colors.line}`, cursor: "pointer", transition: "all 0.3s" }}>QUANTIZED</button>
-                        </div>
-                        
-                        <div style={{ display: "flex", gap: "10px", marginTop: "15px", height: "45px", opacity: localModelType === "QUANTIZED" ? 1 : 0, pointerEvents: localModelType === "QUANTIZED" ? "auto" : "none", transition: "opacity 0.3s" }}>
-                           {["F16", "8-BIT", "Q4", "Q2"].map(q => (
-                             <button key={q} onClick={()=>setQuantLevel(q)} style={{ flex: 1, padding: "10px", fontSize: "11px", letterSpacing: "1px", fontWeight: "bold", background: quantLevel === q ? colors.text : "transparent", color: quantLevel === q ? colors.bg : colors.text, border: `1px solid ${quantLevel === q ? colors.text : colors.line}`, cursor: "pointer", transition: "all 0.2s" }}>{q}</button>
-                           ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: "6rem", display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "3rem", borderTop: `1px solid ${colors.line}` }}>
-                    <div onClick={handleLocalEngineInit} style={{ display: "flex", alignItems: "center", gap: "1.5rem", cursor: "pointer" }} onMouseOver={(e) => e.currentTarget.style.opacity="0.5"} onMouseOut={(e) => e.currentTarget.style.opacity="1"}>
-                      <div style={{ width: "60px", height: "1px", background: colors.text }} />
-                      <span style={{ fontSize: "12px", fontWeight: "900", letterSpacing: "4px" }}>INITIALIZE_LOCAL_ENGINE</span>
-                    </div>
-                  </div>
-                </div>
+                <GraphVisualizer
+                  agents={agents}
+                  teams={crewTeams}
+                  colors={colors}
+                  darkMode={darkMode}
+                  onDeployTeam={(teamId) => setExecutingTeamId(teamId)}
+                />
               </div>
             </section>
 
@@ -442,9 +501,16 @@ export default function Home() {
                         <input type="password" placeholder="API Key..." value={apiKey} onChange={e=>setApiKey(e.target.value)} style={{ flex: 2, padding: "12px", background: "transparent", border: `1px dashed ${colors.line}`, color: colors.text, fontSize: "11px", outline: "none", letterSpacing: "2px" }} />
                         <select value={apiModelStr} onChange={e=>setApiModelStr(e.target.value)} style={{ flex: 1, padding: "12px", background: "transparent", border: `1px solid ${colors.line}`, color: colors.text, fontSize: "10px", outline: "none" }}>
                           {apiProvider === "GROQ" ? (
-                            <><option style={{color:colors.text, background:colors.bg}} value="llama3-70b-8192">LLAMA 3 (70B)</option><option style={{color:colors.text, background:colors.bg}} value="llama3-8b-8192">LLAMA 3 (8B)</option></>
+                            <>
+                              <option style={{color:colors.text, background:colors.bg}} value="qwen/qwen3.8-27b">QWEN 3.8 (27B)</option>
+                              <option style={{color:colors.text, background:colors.bg}} value="openai/gpt-oss-120b">GPT OSS (120B)</option>
+                              <option style={{color:colors.text, background:colors.bg}} value="groq/compound">GROQ COMPOUND</option>
+                            </>
                           ) : (
-                            <><option style={{color:colors.text, background:colors.bg}} value="gpt-4o">GPT-4o</option><option style={{color:colors.text, background:colors.bg}} value="gpt-3.5-turbo">GPT-3.5</option></>
+                            <>
+                              <option style={{color:colors.text, background:colors.bg}} value="gpt-4o">GPT-4o</option>
+                              <option style={{color:colors.text, background:colors.bg}} value="gpt-4o-mini">GPT-4o Mini</option>
+                            </>
                           )}
                         </select>
                       </div>
@@ -500,6 +566,13 @@ export default function Home() {
                   </div>
 
                 </div>
+              </div>
+            </section>
+
+            {/* MCP REGISTRY PANEL — Connected servers & tool status */}
+            <section style={{ padding: "6rem 4vw", borderTop: `1px solid ${colors.line}` }}>
+              <div style={{ width: "100%", maxWidth: "1200px", marginLeft: "auto", marginRight: "auto" }}>
+                <MCPPanel colors={colors} recentToolCalls={recentToolCalls} />
               </div>
             </section>
 

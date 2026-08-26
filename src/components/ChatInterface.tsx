@@ -1,4 +1,4 @@
-﻿"use client"; import React, { useState, useEffect, useRef } from "react";
+"use client"; import React, { useState, useEffect, useRef } from "react";
 import { speakAgentResponse, stopVoice } from "@/utils/voiceSystem";
 import { startListening } from "@/utils/speechRecognition";
 
@@ -17,6 +17,7 @@ export default function ChatInterface({ agent, darkMode }: { agent: any, darkMod
 
     const res = await fetch("/api/chat", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: [...messages, userMsg], agentId: agent.id, protocol: agent.desc }),
     });
     const data = await res.json();

@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Audiowide&family=Space+Mono:wght@400;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  cursor: none !important;
+}
+
+body {
+  background-color: #ffffff;
+  color: #000000;
+  overflow-x: hidden;
+}
+
+.glitch-out {
+  animation: glitch 0.4s forwards;
+}
+
+@keyframes glitch {
+  0% { filter: brightness(1) blur(0px); }
+  100% { filter: brightness(15) blur(20px); }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

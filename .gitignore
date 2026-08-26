@@ -1,11 +1,46 @@
-﻿node_modules/
+# ─── Dependencies & Build ─────────────────────────────────────────────────────
+node_modules/
+dist/
 .next/
 out/
-.env*
-backend/venv/
-backend/__pycache__/
-backend/models/gguf/*.gguf
-backend/models/gguf/*.bin
-backend/models/lora/*.safetensors
+
+# ─── Environment ──────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env*.local
+backend/.env
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+
+# ─── Models & Weights (too large for git) ─────────────────────────────────────
+backend/models/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# ─── OS & Editor ──────────────────────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.user
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Private Docs ─────────────────────────────────────────────────────────────
+GOAL.md
