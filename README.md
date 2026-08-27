@@ -3,6 +3,9 @@
 # ? Unreal People
 ### Dual-Core AI Command Center & Local Hardware Inference Hub
 
+[![CI](https://github.com/Ares19v/Unreal-People/actions/workflows/ci.yml/badge.svg)](https://github.com/Ares19v/Unreal-People/actions/workflows/ci.yml)
+
+
 [![Next.js](https://img.shields.io/badge/Next.js-14+-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![NVIDIA CUDA](https://img.shields.io/badge/CUDA-RTX_5060_Ready-76B900?style=for-the-badge&logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-zone)
