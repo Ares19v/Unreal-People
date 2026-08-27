@@ -128,4 +128,4 @@ Distributed under the MIT License. See `LICENSE` for details.
 
 ---
 
-© 2025 Devansh Tyagi (Ares19v). All Rights Reserved.
+© 2026 Devansh Tyagi (Ares19v). All Rights Reserved.
