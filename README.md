@@ -125,3 +125,7 @@ LAUNCH_UNREAL.bat
 ## ?? License
 
 Distributed under the MIT License. See `LICENSE` for details.
+
+---
+
+© 2025 Devansh Tyagi (Ares19v). All Rights Reserved.
