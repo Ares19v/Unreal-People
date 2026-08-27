@@ -28,5 +28,6 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5",
     "vite": "^6.2.0"
-  }
+  },
+  "description": "Dual-core AI orchestration hub balancing local RTX GPU inference with cloud multi-agent swarms and 3D avatar streaming."
 }
