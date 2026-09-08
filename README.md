@@ -1,6 +1,6 @@
 <div align="center">
 
-# ? Unreal People
+# 🌙 Unreal People
 ### Dual-Core AI Command Center & Local Hardware Inference Hub
 
 [![CI](https://github.com/Ares19v/Unreal-People/actions/workflows/ci.yml/badge.svg)](https://github.com/Ares19v/Unreal-People/actions/workflows/ci.yml)
@@ -20,7 +20,7 @@
 
 ---
 
-## ?? Overview
+## 🌐 Overview
 
 **Unreal People** is a dual-core AI command center and agent orchestration platform. Built to balance offline privacy and compute constraints against scalable cloud swarms, it allows developers and researchers to seamlessly dispatch tasks between local GPU-quantized models and cloud agent teams.
 
@@ -80,7 +80,7 @@
 
 ---
 
-## ? Key Features
+## ✨ Key Features
 
 - **Dynamic Hybrid Router**: Automatically routes queries based on sensitivity, offline status, or computational complexity.
 - **Hardware Telemetry HUD**: Real-time monitoring of VRAM allocation, GPU core utilization, token generation velocity (tok/sec), and thermals.
@@ -91,31 +91,31 @@
 
 ---
 
-## ??? System Architecture
+## 🏗️ System Architecture
 
 ```
 Unreal-People/
-??? backend/                # FastAPI Core & Agent Orchestration Services
-?   ??? app/
-?   ?   ??? core/           # Config, hardware telemetry & GPU manager
-?   ?   ??? engines/        # Local llama-cpp & Cloud CrewAI adapters
-?   ?   ??? routers/        # WebSocket streams & REST endpoints
-?   ?   ??? services/       # Voice, prompt caching & audio synthesis
-?   ??? requirements.txt    # Backend Python dependencies
-?   ??? main.py             # Server entry point
-??? src/                    # Next.js / React Frontend Application
-?   ??? components/         # Mission control HUD, agent visualizers & charts
-?   ??? hooks/              # WebSocket hooks & telemetry listeners
-?   ??? app/                # App router layout and dashboard views
-??? public/                 # Static assets, icons, and 3D UI elements
-??? LAUNCH_UNREAL.bat       # Production launch script
-??? EVAL.md                 # System benchmark & evaluation report
-??? package.json            # Frontend scripts and UI dependencies
+├── backend/                # FastAPI Core & Agent Orchestration Services
+│   ├── app/
+│   │   ├── core/           # Config, hardware telemetry & GPU manager
+│   │   ├── engines/        # Local llama-cpp & Cloud CrewAI adapters
+│   │   ├── routers/        # WebSocket streams & REST endpoints
+│   │   └── services/       # Voice, prompt caching & audio synthesis
+│   ├── requirements.txt    # Backend Python dependencies
+│   └── main.py             # Server entry point
+├── src/                    # Next.js / React Frontend Application
+│   ├── components/         # Mission control HUD, agent visualizers & charts
+│   ├── hooks/              # WebSocket hooks & telemetry listeners
+│   └── app/                # App router layout and dashboard views
+├── public/                 # Static assets, icons, and 3D UI elements
+├── LAUNCH_UNREAL.bat       # Production launch script
+├── EVAL.md                 # System benchmark & evaluation report
+└── package.json            # Frontend scripts and UI dependencies
 ```
 
 ---
 
-## ?? Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 - **Hardware**: NVIDIA GPU recommended (e.g. RTX 3060/4060/5060 or higher with CUDA 12+)
@@ -158,7 +158,7 @@ Open [http://localhost:3000](http://localhost:3000) to access the Command Center
 
 ---
 
-## ?? Automated Launch
+## ⚡ Automated Launch
 
 For Windows workstations with GPU acceleration configured:
 ```cmd
@@ -167,7 +167,7 @@ LAUNCH_UNREAL.bat
 
 ---
 
-## ?? License
+## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for details.
 
