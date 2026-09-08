@@ -38,42 +38,42 @@
 ## 🖥️ Command Center & Agent Swarm Interface
 
 <p align="center">
-  <img src="assets/Unreal-People_4.png" alt="Unreal People Mission Control HUD" width="100%" style="border-radius: 8px; border: 1px solid #30363d;" />
+  <img src="assets/Unreal-People_4.png" alt="Unreal People Visual Identity" width="100%" style="border-radius: 8px; border: 1px solid #30363d;" />
   <br>
-  <em>Unreal People Mission Control: Dual-core LLM orchestration, live GPU token generation meters, and agent swarm cockpit.</em>
+  <em>Unreal People — Dual-core AI orchestration & agent swarm ecosystem.</em>
 </p>
 
 <table width="100%">
   <tr>
     <td width="50%" align="center">
-      <img src="assets/Unreal-People_1.png" alt="Local Engine Sandbox & Hardware Telemetry" width="100%" style="border-radius: 6px;" />
+      <img src="assets/Unreal-People_1.png" alt="Platform Landing Screen" width="100%" style="border-radius: 6px;" />
       <br>
-      <strong>Hardware Telemetry & GPU HUD</strong>
+      <strong>Platform Landing Screen</strong>
       <br>
-      <em>RTX VRAM allocation, compute utilization & token velocity.</em>
+      <em>Core system entry point with light/dark theme switcher.</em>
     </td>
     <td width="50%" align="center">
-      <img src="assets/Unreal-People_2.png" alt="Agent Swarm Control Room" width="100%" style="border-radius: 6px;" />
+      <img src="assets/Unreal-People_2.png" alt="Architecture & Integration Hub" width="100%" style="border-radius: 6px;" />
       <br>
-      <strong>Agent Swarm Control Room</strong>
+      <strong>Architecture & Integration Hub</strong>
       <br>
-      <em>Multi-agent delegation hierarchy, scratchpads & debate loops.</em>
+      <em>Pinecone vector memory, MCP protocol gateway, and CrewAI squad deployment.</em>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/Unreal-People_3.png" alt="Voice & Avatar Integration Pipeline" width="100%" style="border-radius: 6px;" />
+      <img src="assets/Unreal-People_3.png" alt="LangGraph State Machine" width="100%" style="border-radius: 6px;" />
       <br>
-      <strong>Voice & Audio Pipeline</strong>
+      <strong>LangGraph State Machine</strong>
       <br>
-      <em>Real-time speech-to-text, acoustic synthesis & vocal chat.</em>
+      <em>Compiled agent DAG visualizer, linear chain flow, and supervisor router inspector.</em>
     </td>
     <td width="50%" align="center">
-      <img src="assets/Unreal-People_5.png" alt="Model & LoRA Configuration" width="100%" style="border-radius: 6px;" />
+      <img src="assets/Unreal-People_5.png" alt="Domain Protocols & Entity Injection" width="100%" style="border-radius: 6px;" />
       <br>
-      <strong>Dynamic LoRA & Model Routing</strong>
+      <strong>Domain Protocols & Entity Injection</strong>
       <br>
-      <em>Quantized GGUF weights, adapter switching & hybrid cloud dispatch.</em>
+      <em>Specialized agents (Real Estate, Medical, Coding) and dynamic protocol injection.</em>
     </td>
   </tr>
 </table>
