@@ -35,6 +35,51 @@
 
 ---
 
+## 🖥️ Command Center & Agent Swarm Interface
+
+<p align="center">
+  <img src="assets/Unreal-People_4.png" alt="Unreal People Mission Control HUD" width="100%" style="border-radius: 8px; border: 1px solid #30363d;" />
+  <br>
+  <em>Unreal People Mission Control: Dual-core LLM orchestration, live GPU token generation meters, and agent swarm cockpit.</em>
+</p>
+
+<table width="100%">
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/Unreal-People_1.png" alt="Local Engine Sandbox & Hardware Telemetry" width="100%" style="border-radius: 6px;" />
+      <br>
+      <strong>Hardware Telemetry & GPU HUD</strong>
+      <br>
+      <em>RTX VRAM allocation, compute utilization & token velocity.</em>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/Unreal-People_2.png" alt="Agent Swarm Control Room" width="100%" style="border-radius: 6px;" />
+      <br>
+      <strong>Agent Swarm Control Room</strong>
+      <br>
+      <em>Multi-agent delegation hierarchy, scratchpads & debate loops.</em>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/Unreal-People_3.png" alt="Voice & Avatar Integration Pipeline" width="100%" style="border-radius: 6px;" />
+      <br>
+      <strong>Voice & Audio Pipeline</strong>
+      <br>
+      <em>Real-time speech-to-text, acoustic synthesis & vocal chat.</em>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/Unreal-People_5.png" alt="Model & LoRA Configuration" width="100%" style="border-radius: 6px;" />
+      <br>
+      <strong>Dynamic LoRA & Model Routing</strong>
+      <br>
+      <em>Quantized GGUF weights, adapter switching & hybrid cloud dispatch.</em>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## ? Key Features
 
 - **Dynamic Hybrid Router**: Automatically routes queries based on sensitivity, offline status, or computational complexity.
